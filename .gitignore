@@ -1,0 +1,21 @@
+# 依赖（用户拉取后自行 npm install）
+node_modules/
+
+# 构建产物
+dist/
+
+# Wrangler 本地缓存
+.wrangler/
+
+# 本地开发密钥（绝对不能提交！）
+.dev.vars
+*.env
+.env
+.env.local
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# TypeScript 编译缓存
+*.tsbuildinfo
