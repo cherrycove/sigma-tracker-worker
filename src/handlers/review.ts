@@ -1,55 +1,35 @@
 import { KVStore } from "../kv/store";
 
+interface ReviewCandidate {
+  topicId: string;
+  topicName: string;
+  nextReviewAt: number;
+  pKnown: number;
+  intervalDays: number;
+  easeFactor: number;
+  repetitions: number;
+}
+
 export async function handleReviewPlan(
   limit: number,
   includeFuture: boolean,
   store: KVStore
 ): Promise<object> {
   const now = Math.floor(Date.now() / 1000);
-  const index = await store.getReviewIndex();
+  const candidates = await loadReviewCandidates(store);
+  const dueReviews = candidates
+    .filter(candidate => candidate.nextReviewAt <= now)
+    .sort((a, b) => a.nextReviewAt - b.nextReviewAt)
+    .slice(0, limit)
+    .map(candidate => toDueReview(candidate, now));
 
-  const due = index
-    .filter(e => e.next_review_at <= now)
-    .sort((a, b) => a.next_review_at - b.next_review_at)
-    .slice(0, limit);
-
-  const dueReviews = await Promise.all(due.map(async entry => {
-    const ks = await store.getKS(entry.topicId);
-    const sm2 = await store.getSM2(entry.topicId);
-    const overdueDays = round((now - entry.next_review_at) / 86400);
-    return {
-      topic_id: entry.topicId,
-      topic_name: entry.topicName,
-      next_review_at: new Date(entry.next_review_at * 1000).toISOString(),
-      p_known: ks ? round(ks.p_known) : 0.1,
-      interval_days: sm2?.interval_days ?? 1,
-      ease_factor: sm2 ? round(sm2.ease_factor) : 2.5,
-      repetitions: sm2?.repetitions ?? 0,
-      overdue_days: overdueDays,
-      priority: overdueDays > 7 ? "high" : overdueDays > 2 ? "medium" : "low",
-    };
-  }));
-
-  let upcomingReviews: object[] = [];
-  if (includeFuture) {
-    const upcoming = index
-      .filter(e => e.next_review_at > now)
-      .sort((a, b) => a.next_review_at - b.next_review_at)
-      .slice(0, limit);
-
-    upcomingReviews = await Promise.all(upcoming.map(async entry => {
-      const ks = await store.getKS(entry.topicId);
-      const sm2 = await store.getSM2(entry.topicId);
-      return {
-        topic_id: entry.topicId,
-        topic_name: entry.topicName,
-        next_review_at: new Date(entry.next_review_at * 1000).toISOString(),
-        p_known: ks ? round(ks.p_known) : 0.1,
-        interval_days: sm2?.interval_days ?? 1,
-        days_until: round((entry.next_review_at - now) / 86400),
-      };
-    }));
-  }
+  const upcomingReviews = includeFuture
+    ? candidates
+        .filter(candidate => candidate.nextReviewAt > now)
+        .sort((a, b) => a.nextReviewAt - b.nextReviewAt)
+        .slice(0, limit)
+        .map(candidate => toUpcomingReview(candidate, now))
+    : [];
 
   return {
     due_count: dueReviews.length,
@@ -57,6 +37,63 @@ export async function handleReviewPlan(
     ...(includeFuture ? { upcoming_reviews: upcomingReviews } : {}),
     generated_at: new Date().toISOString(),
   };
+}
+
+async function loadReviewCandidates(store: KVStore): Promise<ReviewCandidate[]> {
+  const leafTopics = await store.getLeafTopics();
+  const candidates = await Promise.all(leafTopics.map(topic => loadReviewCandidate(store, topic.id, topic.name)));
+  return candidates.filter((candidate): candidate is ReviewCandidate => candidate !== null);
+}
+
+async function loadReviewCandidate(
+  store: KVStore,
+  topicId: string,
+  topicName: string
+): Promise<ReviewCandidate | null> {
+  const [ks, sm2] = await Promise.all([store.getKS(topicId), store.getSM2(topicId)]);
+  if (!sm2) {
+    return null;
+  }
+
+  return {
+    topicId,
+    topicName,
+    nextReviewAt: sm2.next_review_at,
+    pKnown: ks ? round(ks.p_known) : 0.1,
+    intervalDays: sm2.interval_days,
+    easeFactor: round(sm2.ease_factor),
+    repetitions: sm2.repetitions,
+  };
+}
+
+function toDueReview(candidate: ReviewCandidate, now: number): object {
+  const overdueDays = round((now - candidate.nextReviewAt) / 86400);
+  return {
+    topic_id: candidate.topicId,
+    topic_name: candidate.topicName,
+    next_review_at: toIso(candidate.nextReviewAt),
+    p_known: candidate.pKnown,
+    interval_days: candidate.intervalDays,
+    ease_factor: candidate.easeFactor,
+    repetitions: candidate.repetitions,
+    overdue_days: overdueDays,
+    priority: overdueDays > 7 ? "high" : overdueDays > 2 ? "medium" : "low",
+  };
+}
+
+function toUpcomingReview(candidate: ReviewCandidate, now: number): object {
+  return {
+    topic_id: candidate.topicId,
+    topic_name: candidate.topicName,
+    next_review_at: toIso(candidate.nextReviewAt),
+    p_known: candidate.pKnown,
+    interval_days: candidate.intervalDays,
+    days_until: round((candidate.nextReviewAt - now) / 86400),
+  };
+}
+
+function toIso(ts: number): string {
+  return new Date(ts * 1000).toISOString();
 }
 
 function round(n: number): number {

@@ -9,7 +9,6 @@
  *   record:{userId}:{topicId}:{ts}    → LearningRecord
  *   record_index:{userId}:{topicId}   → string[]  (该主题的学习记录 ts 列表)
  *   prereq:{userId}:{topicId}         → string[]  (直接先决知识 topicId 列表)
- *   review_index:{userId}             → ReviewIndexEntry[]
  */
 
 export interface TopicRecord {
@@ -41,10 +40,4 @@ export interface LearningRecord {
   notes: string | null;
   sessionType: string;
   createdAt: number;
-}
-
-export interface ReviewIndexEntry {
-  topicId: string;
-  topicName: string;
-  next_review_at: number;
 }

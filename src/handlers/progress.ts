@@ -7,6 +7,7 @@ export async function handleProgress(
   store: KVStore
 ): Promise<object> {
   const topics = await store.getAllTopics();
+  const topicPaths = await store.getTopicPaths(topics);
   const now = Math.floor(Date.now() / 1000);
 
   // 时间过滤
@@ -48,6 +49,7 @@ export async function handleProgress(
       return {
         topic_id: topic.id,
         topic_name: topic.name,
+        topic_path: topicPaths[topic.id] ?? topic.name,
         parent_id: topic.parentId,
         p_known: pKnown,
         status: statusLabel(pKnown),
@@ -66,16 +68,17 @@ export async function handleProgress(
     .filter(t => t.parent_id === null)
     .sort((a, b) => a.topic_name.localeCompare(b.topic_name));
 
-  const total = topicStates.length;
-  const mastered = topicStates.filter(t => t.p_known >= 0.8).length;
-  const overdue = topicStates.filter(t => t.overdue).length;
+  const leafStates = filterLeafStates(topicStates);
+  const total = leafStates.length;
+  const mastered = leafStates.filter(t => t.p_known >= 0.8).length;
+  const overdue = leafStates.filter(t => t.overdue).length;
 
   return {
     summary: {
       total_topics: total,
       mastered,
-      in_progress: topicStates.filter(t => t.p_known >= 0.4 && t.p_known < 0.8).length,
-      beginning: topicStates.filter(t => t.p_known < 0.4).length,
+      in_progress: leafStates.filter(t => t.p_known >= 0.4 && t.p_known < 0.8).length,
+      beginning: leafStates.filter(t => t.p_known < 0.4).length,
       overdue_reviews: overdue,
     },
     topics: topicStates,
@@ -83,6 +86,15 @@ export async function handleProgress(
     period,
     generated_at: new Date().toISOString(),
   };
+}
+
+function filterLeafStates<T extends { topic_id: string; parent_id: string | null }>(topics: T[]): T[] {
+  const parentIds = new Set(
+    topics
+      .filter(topic => topic.parent_id !== null)
+      .map(topic => topic.parent_id as string)
+  );
+  return topics.filter(topic => !parentIds.has(topic.topic_id));
 }
 
 function statusLabel(p: number): string {

@@ -79,8 +79,8 @@ curl -X POST https://sigma-tracker.<your>.workers.dev/record \
 ## Sigma Tracker
 
 学习追踪 API:
-- URL: https://sigma-tracker.<your>.workers.dev
-- Token: sigma_abc123xyz  (替换为你的真实 token)
+- SIGMA_API_URL: https://sigma-tracker.<你的子域名>.workers.dev
+- SIGMA_API_TOKEN: (替换为你的真实 token)
 ```
 
 `2sigma-tutor` skill 会自动通过 `WebFetch` 调用这些端点，替代本地 MCP 服务。

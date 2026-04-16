@@ -26,6 +26,7 @@ import { handleReviewPlan } from "./handlers/review";
 import { handleMastery } from "./handlers/mastery";
 import { handleTopics } from "./handlers/topics";
 import { handlePrerequisites } from "./handlers/prerequisites";
+import { renderDashboard } from "./dashboard";
 
 export interface Env {
   KV: KVNamespace;
@@ -39,10 +40,15 @@ export default {
       return new Response(null, { headers: corsHeaders() });
     }
 
-    // ── Health check（无需鉴权）──────────────────────────────────────────
+    // ── Health check & Dashboard（无需鉴权）─────────────────────────────
     const url = new URL(request.url);
     if (url.pathname === "/health") {
       return json({ status: "ok", version: "1.0.0" });
+    }
+
+    // GET / — Dashboard UI
+    if (url.pathname === "/" && request.method === "GET") {
+      return renderDashboard();
     }
 
     // ── Auth ─────────────────────────────────────────────────────────────
@@ -105,6 +111,13 @@ export default {
         return json(result);
       }
 
+      // DELETE /topics/:id  (recursive cascade delete)
+      if (path.startsWith("/topics/") && request.method === "DELETE") {
+        const topicId = decodeURIComponent(path.replace("/topics/", ""));
+        const result = await store.deleteTopicCascade(topicId);
+        return json({ success: true, ...result });
+      }
+
       return json({ error: `Not found: ${request.method} ${path}` }, 404);
 
     } catch (err: unknown) {
@@ -126,7 +139,7 @@ function json(data: unknown, status = 200): Response {
 function corsHeaders(): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
   };
 }
